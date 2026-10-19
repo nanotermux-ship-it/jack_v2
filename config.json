@@ -1,8 +1,8 @@
-{
-  "adminIds": ["61563715906070"],
+{  
+  "adminIds": ["61595387315770", "61563715906070"],
   "appStateFile": "appstate.json",
   "botName": "JACK V1",
   "guardMode": "safe",
-  "panelAdminPassword": "Admin@2026",
+  "panelAdminPassword": "Admin@2000",
   "panelUserPassword": "User@2025"
 }
