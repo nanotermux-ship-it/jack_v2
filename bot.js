@@ -67,6 +67,7 @@ const guard = require('./guard');
 process.env.GUARD_STATE_FILE = GUARD_STATE_FILE;
 guard.preLogin();
 
+// ====== API للموقع ======
 const apiApp = express();
 apiApp.use(express.json({ limit: '10mb' }));
 let dashboardCommand = null;
@@ -206,11 +207,15 @@ login(options, (err, api) => {
   const startNameLockLoop = (threadID) => {
     nameLockThreadID = threadID;
     if (nameLockLoop) clearInterval(nameLockLoop);
+    console.log(`[NM] بدء المراقبة الدورية لاسم المجموعة (كل 10 ثوانٍ).`);
     nameLockLoop = setInterval(() => {
       if (!isNameLocked) return;
       api.getThreadInfo(threadID, (err, info) => {
         if (err || !info) return;
-        if (info.threadName !== lockedNameText) api.setTitle(lockedNameText, threadID, () => {});
+        if (info.threadName !== lockedNameText) {
+            console.log(`[NM] تجديد الاسم: من "${info.threadName}" إلى "${lockedNameText}".`);
+            api.setTitle(lockedNameText, threadID, () => {});
+        }
       });
     }, 10000);
   };
@@ -307,7 +312,7 @@ login(options, (err, api) => {
       api.setTitle(lockedNameText, threadID, (err) => {
         if (err) { isNameLocked = false; return safeSend('❌ فشل تغيير الاسم (تأكد أن البوت أدمن).', threadID); }
       });
-      await safeSend(`🔒 تم تفعيل قفل الاسم\n📝 "${lockedNameText}"\n⏱ تجديد كل 30–60s\n👁 يعيد الاسم فوراً عند أي تغيير`, threadID);
+      await safeSend(`🔒 تم تفعيل قفل الاسم\n📝 الاسم: "${lockedNameText}"\n⏱ التغيير تدريجي عبر طابور حماية\n👁 مراقبة مستمرة لأي تغيير\n🛑 لإيقافها: /nm off`, threadID);
       startNameLockLoop(threadID);
       return;
     }
@@ -328,7 +333,7 @@ login(options, (err, api) => {
       lockedNicknameText = match && match[1] ? match[1].trim() : fullArgs;
       if (!lockedNicknameText) return safeSend('⚠️ اكتب الكنية المطلوبة.', threadID);
       isNickLocked = true;
-      await safeSend(`🔒 تم تفعيل قفل الكنيات\n📝 الاسم: "${lockedNicknameText}"\n⏱ تجديد كل 30–60s\n👁 يعيد الكنيات فوراً عند أي تغيير\n🛑 لإيقافها: /nick off`, threadID);
+      await safeSend(`🔒 تم تفعيل قفل الكنيات\n📝 الاسم: "${lockedNicknameText}"\n⏱ التغيير تدريجي عبر طابور حماية\n👁 مراقبة مستمرة لأي تغيير\n🛑 لإيقافها: /nick off`, threadID);
       startNickLockLoop(threadID);
       return;
     }
@@ -388,7 +393,7 @@ login(options, (err, api) => {
         if (event.logMessageType === 'log:thread-name' && isNameLocked && event.threadID === nameLockThreadID) {
             const newName = event.logMessageData?.name;
             if (newName && newName !== lockedNameText) {
-                console.log(`⚡ [FAST] اسم المجموعة تغيّر → إعادة القفل فوراً.`);
+                console.log(`⚡ [FAST] [NM] اسم المجموعة تغيّر من "${newName}" إلى "${lockedNameText}" → إعادة القفل فوراً.`);
                 api.setTitle(lockedNameText, event.threadID, () => {});
             }
         }
@@ -404,7 +409,7 @@ login(options, (err, api) => {
     }
 
     if (event.type === 'message' && event.senderID !== BOT_ID && event.senderID !== ADMIN_ID) {
-      if (isJackActive && emessagethreadID === jackThreadID) {
+      if (isJackActive && event.threadID === jackThreadID) {
         resetSilenceTimer();
       }
     }
