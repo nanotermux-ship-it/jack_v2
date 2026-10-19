@@ -1,7 +1,9 @@
 const fs = require('fs');
+const path = require('path');
 
-const STATE_FILE = 'guard_state.json';
-const LOG_FILE = 'guard.log';
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || '.';
+const STATE_FILE = path.join(DATA_DIR, 'guard_state.json');
+const LOG_FILE = path.join(DATA_DIR, 'guard.log');
 const STOP_FILE = 'STOP';
 
 const PROFILES = {
