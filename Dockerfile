@@ -1,15 +1,15 @@
-FROM node:20-bookworm-slim
+FROM node:22-bookworm
 
-# تثبيت أدوات بناء sqlite3
+# تثبيت أدوات البناء لـ sqlite3
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# تثبيت حزم البوت (الجذر)
+# تثبيت حزم البوت
 COPY package.json ./
 RUN npm install
 
-# تثبيت حزم الموقع (dashboard)
+# تثبيت حزم الموقع
 COPY dashboard/package.json ./dashboard/
 RUN cd dashboard && npm install
 
