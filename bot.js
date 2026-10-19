@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
-// ✅ استخدام __dirname لضمان قراءة config.json من نفس المجلد
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 
 // ====== إعادة توجيه السجلات ======
@@ -68,7 +67,6 @@ const guard = require('./guard');
 process.env.GUARD_STATE_FILE = GUARD_STATE_FILE;
 guard.preLogin();
 
-// ====== API للموقع ======
 const apiApp = express();
 apiApp.use(express.json({ limit: '10mb' }));
 let dashboardCommand = null;
@@ -205,7 +203,6 @@ login(options, (err, api) => {
   const clearJackState = () => { isJackActive = false; if (jackInterval) clearTimeout(jackInterval); if (silenceTimeout) clearTimeout(silenceTimeout); };
   const stopNameLock = () => { isNameLocked = false; nameLockThreadID = null; if (nameLockLoop) clearInterval(nameLockLoop); };
 
-  // ✅ مراقبة الاسم: احتياط كل 10 ثوانٍ (الأحداث هي الأساس)
   const startNameLockLoop = (threadID) => {
     nameLockThreadID = threadID;
     if (nameLockLoop) clearInterval(nameLockLoop);
@@ -215,10 +212,9 @@ login(options, (err, api) => {
         if (err || !info) return;
         if (info.threadName !== lockedNameText) api.setTitle(lockedNameText, threadID, () => {});
       });
-    }, 10000); // احتياط فقط
+    }, 10000);
   };
 
-  // ✅ مراقبة الكنيات: احتياط كل 15 ثانية (الأحداث هي الأساس)
   const startNickLockLoop = (threadID) => {
     nickLockThreadID = threadID;
     if (nickInterval) clearInterval(nickInterval);
@@ -233,7 +229,7 @@ login(options, (err, api) => {
             try { api.changeNickname(lockedNicknameText, threadID, uid, (err) => {}); } catch (e) {}
           }
         }
-        const nextTime = Math.floor(Math.random() * (15000 - 10000 + 1) + 10000); // 10-15 ثانية
+        const nextTime = Math.floor(Math.random() * (15000 - 10000 + 1) + 10000);
         if (isNickLocked) nickInterval = setTimeout(loop, nextTime);
       });
     };
@@ -311,7 +307,7 @@ login(options, (err, api) => {
       api.setTitle(lockedNameText, threadID, (err) => {
         if (err) { isNameLocked = false; return safeSend('❌ فشل تغيير الاسم (تأكد أن البوت أدمن).', threadID); }
       });
-      await safeSend(`🔒 تم تفعيل قفل الاسم\n📝 "${lockedNameText}"`, threadID);
+      await safeSend(`🔒 تم تفعيل قفل الاسم\n📝 "${lockedNameText}"\n⏱ تجديد كل 30–60s\n👁 يعيد الاسم فوراً عند أي تغيير`, threadID);
       startNameLockLoop(threadID);
       return;
     }
@@ -332,7 +328,7 @@ login(options, (err, api) => {
       lockedNicknameText = match && match[1] ? match[1].trim() : fullArgs;
       if (!lockedNicknameText) return safeSend('⚠️ اكتب الكنية المطلوبة.', threadID);
       isNickLocked = true;
-      await safeSend(`🔒 تم تفعيل قفل الكنيات\n📝 الاسم: "${lockedNicknameText}"\n⏱ التغيير تدريجي عبر طابور حماية\n👁 مراقبة مستمرة لأي تغيير\n🛑 لإيقافها: /nick off`, threadID);
+      await safeSend(`🔒 تم تفعيل قفل الكنيات\n📝 الاسم: "${lockedNicknameText}"\n⏱ تجديد كل 30–60s\n👁 يعيد الكنيات فوراً عند أي تغيير\n🛑 لإيقافها: /nick off`, threadID);
       startNickLockLoop(threadID);
       return;
     }
@@ -388,11 +384,7 @@ login(options, (err, api) => {
   api.listenMqtt(async (err, event) => {
     if (err || !event) return;
 
-    // ═══════════════════════════════════════════════════
-    // ✅ المراقبة الفورية (0ms) عبر أحداث Facebook
-    // ═══════════════════════════════════════════════════
     if (event.type === 'event') {
-        // تغيير اسم المجموعة
         if (event.logMessageType === 'log:thread-name' && isNameLocked && event.threadID === nameLockThreadID) {
             const newName = event.logMessageData?.name;
             if (newName && newName !== lockedNameText) {
@@ -401,7 +393,6 @@ login(options, (err, api) => {
             }
         }
         
-        // تغيير كنية عضو
         if (event.logMessageType === 'log:user-nickname' && isNickLocked && event.threadID === nickLockThreadID) {
             const targetUser = event.logMessageData?.participant_id || event.author;
             const newNick = event.logMessageData?.nickname;
@@ -412,14 +403,12 @@ login(options, (err, api) => {
         }
     }
 
-    // مراقبة التفاعل أثناء /jack
     if (event.type === 'message' && event.senderID !== BOT_ID && event.senderID !== ADMIN_ID) {
-      if (isJackActive && event.threadID === jackThreadID) {
+      if (isJackActive && emessagethreadID === jackThreadID) {
         resetSilenceTimer();
       }
     }
 
-    // معالجة الأوامر
     if (event.type !== 'message' || !event.body || !event.body.startsWith(PREFIX)) return;
     if (!adminIds.includes(event.senderID)) return;
     const parts = event.body.slice(PREFIX.length).trim().split(/\s+/);
