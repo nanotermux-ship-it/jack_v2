@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
-// ✅ التعديل هنا: استخدام __dirname لضمان قراءة config.json من نفس المجلد
+// ✅ استخدام __dirname لضمان قراءة config.json من نفس المجلد
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname;
 
 // ====== إعادة توجيه السجلات ======
@@ -45,8 +45,8 @@ let isBotOnline = false;
 let mqttReady = false; 
 
 let isJackActive = false, jackInterval = null, silenceTimeout = null, jackText = "", jackThreadID = null;
-let isNameLocked = false, lockedNameText = "", nameLockLoop = null;
-let isNickLocked = false, lockedNicknameText = "", nickInterval = null;
+let isNameLocked = false, lockedNameText = "", nameLockLoop = null, nameLockThreadID = null;
+let isNickLocked = false, lockedNicknameText = "", nickInterval = null, nickLockThreadID = null;
 
 let appState;
 try {
@@ -203,9 +203,11 @@ login(options, (err, api) => {
   }, 1000);
 
   const clearJackState = () => { isJackActive = false; if (jackInterval) clearTimeout(jackInterval); if (silenceTimeout) clearTimeout(silenceTimeout); };
-  const stopNameLock = () => { isNameLocked = false; if (nameLockLoop) clearInterval(nameLockLoop); };
+  const stopNameLock = () => { isNameLocked = false; nameLockThreadID = null; if (nameLockLoop) clearInterval(nameLockLoop); };
 
+  // ✅ مراقبة الاسم: احتياط كل 10 ثوانٍ (الأحداث هي الأساس)
   const startNameLockLoop = (threadID) => {
+    nameLockThreadID = threadID;
     if (nameLockLoop) clearInterval(nameLockLoop);
     nameLockLoop = setInterval(() => {
       if (!isNameLocked) return;
@@ -213,15 +215,17 @@ login(options, (err, api) => {
         if (err || !info) return;
         if (info.threadName !== lockedNameText) api.setTitle(lockedNameText, threadID, () => {});
       });
-    }, 3000);
+    }, 10000); // احتياط فقط
   };
 
+  // ✅ مراقبة الكنيات: احتياط كل 15 ثانية (الأحداث هي الأساس)
   const startNickLockLoop = (threadID) => {
+    nickLockThreadID = threadID;
     if (nickInterval) clearInterval(nickInterval);
     const loop = async () => {
       if (!isNickLocked) return;
       api.getThreadInfo(threadID, (err, info) => {
-        if (err || !info || !info.participantIDs) { if (isNickLocked) nickInterval = setTimeout(loop, 3000); return; }
+        if (err || !info || !info.participantIDs) { if (isNickLocked) nickInterval = setTimeout(loop, 15000); return; }
         for (const uid of info.participantIDs) {
           if (!isNickLocked) break;
           const currentNick = info.nicknames ? info.nicknames[uid] : "";
@@ -229,7 +233,7 @@ login(options, (err, api) => {
             try { api.changeNickname(lockedNicknameText, threadID, uid, (err) => {}); } catch (e) {}
           }
         }
-        const nextTime = Math.floor(Math.random() * (3500 - 2500 + 1) + 2500);
+        const nextTime = Math.floor(Math.random() * (15000 - 10000 + 1) + 10000); // 10-15 ثانية
         if (isNickLocked) nickInterval = setTimeout(loop, nextTime);
       });
     };
@@ -384,12 +388,38 @@ login(options, (err, api) => {
   api.listenMqtt(async (err, event) => {
     if (err || !event) return;
 
+    // ═══════════════════════════════════════════════════
+    // ✅ المراقبة الفورية (0ms) عبر أحداث Facebook
+    // ═══════════════════════════════════════════════════
+    if (event.type === 'event') {
+        // تغيير اسم المجموعة
+        if (event.logMessageType === 'log:thread-name' && isNameLocked && event.threadID === nameLockThreadID) {
+            const newName = event.logMessageData?.name;
+            if (newName && newName !== lockedNameText) {
+                console.log(`⚡ [FAST] اسم المجموعة تغيّر → إعادة القفل فوراً.`);
+                api.setTitle(lockedNameText, event.threadID, () => {});
+            }
+        }
+        
+        // تغيير كنية عضو
+        if (event.logMessageType === 'log:user-nickname' && isNickLocked && event.threadID === nickLockThreadID) {
+            const targetUser = event.logMessageData?.participant_id || event.author;
+            const newNick = event.logMessageData?.nickname;
+            if (newNick !== lockedNicknameText && targetUser) {
+                console.log(`⚡ [FAST] كنية العضو ${targetUser} تغيّرت → إعادة القفل فوراً.`);
+                api.changeNickname(lockedNicknameText, event.threadID, targetUser, () => {});
+            }
+        }
+    }
+
+    // مراقبة التفاعل أثناء /jack
     if (event.type === 'message' && event.senderID !== BOT_ID && event.senderID !== ADMIN_ID) {
       if (isJackActive && event.threadID === jackThreadID) {
         resetSilenceTimer();
       }
     }
 
+    // معالجة الأوامر
     if (event.type !== 'message' || !event.body || !event.body.startsWith(PREFIX)) return;
     if (!adminIds.includes(event.senderID)) return;
     const parts = event.body.slice(PREFIX.length).trim().split(/\s+/);
