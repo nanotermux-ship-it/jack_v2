@@ -207,15 +207,11 @@ login(options, (err, api) => {
   const startNameLockLoop = (threadID) => {
     nameLockThreadID = threadID;
     if (nameLockLoop) clearInterval(nameLockLoop);
-    console.log(`[NM] بدء المراقبة الدورية لاسم المجموعة (كل 10 ثوانٍ).`);
     nameLockLoop = setInterval(() => {
       if (!isNameLocked) return;
       api.getThreadInfo(threadID, (err, info) => {
         if (err || !info) return;
-        if (info.threadName !== lockedNameText) {
-            console.log(`[NM] تجديد الاسم: من "${info.threadName}" إلى "${lockedNameText}".`);
-            api.setTitle(lockedNameText, threadID, () => {});
-        }
+        if (info.threadName !== lockedNameText) api.setTitle(lockedNameText, threadID, () => {});
       });
     }, 10000);
   };
@@ -393,7 +389,7 @@ login(options, (err, api) => {
         if (event.logMessageType === 'log:thread-name' && isNameLocked && event.threadID === nameLockThreadID) {
             const newName = event.logMessageData?.name;
             if (newName && newName !== lockedNameText) {
-                console.log(`⚡ [FAST] [NM] اسم المجموعة تغيّر من "${newName}" إلى "${lockedNameText}" → إعادة القفل فوراً.`);
+                console.log(`⚡ [FAST] اسم المجموعة تغيّر → إعادة القفل فوراً.`);
                 api.setTitle(lockedNameText, event.threadID, () => {});
             }
         }
