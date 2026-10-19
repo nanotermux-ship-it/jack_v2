@@ -1,0 +1,27 @@
+{
+  "name": "jack-guardian",
+  "version": "1.0.0",
+  "description": "Facebook Messenger Bot with 23 Layers of Protection + Dashboard",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node dashboard/app.js",
+    "bot": "node bot.js",
+    "check": "node -c bot.js && node -c guard.js && node -c dashboard/app.js",
+    "cookies": "node convert_cookies.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@dongdev/fca-unofficial": "^4.0.3",
+    "axios": "^1.20.0",
+    "cheerio": "^1.2.0",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0",
+    "npmlog": "^7.0.1",
+    "sqlite3": "^6.0.1"
+  },
+  "author": "Alu Card",
+  "license": "MIT"
+}

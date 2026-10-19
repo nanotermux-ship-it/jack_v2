@@ -1,0 +1,382 @@
+const fca = require('@dongdev/fca-unofficial');
+const login = fca.login || fca.default || fca;
+const fs = require('fs');
+const path = require('path');
+const express = require('express');
+
+// 🚨 دعم Volume على Railway (أو المجلد المحلي)
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || '.';
+
+// ====== إعادة توجيه السجلات ======
+const logStream = fs.createWriteStream(path.join(DATA_DIR, 'bot_console.log'), { flags: 'a' });
+const originalLog = console.log;
+const originalError = console.error;
+console.log = function(...args) { const msg = args.join(' '); logStream.write(`[${new Date().toISOString()}] ${msg}\n`); originalLog.apply(console, args); };
+console.error = function(...args) { const msg = args.join(' '); logStream.write(`[${new Date().toISOString()}] ERROR: ${msg}\n`); originalError.apply(console, args); };
+
+// ====== تسجيل الرسائل ======
+const messagesLogFile = path.join(DATA_DIR, 'messages_log.json');
+function logMessage(threadID, senderName, text, type = 'sent') {
+    let logs = [];
+    try { logs = JSON.parse(fs.readFileSync(messagesLogFile, 'utf8')); } catch (e) {}
+    logs.unshift({ threadID: threadID, sender: senderName, text: text, type: type, time: new Date().toISOString() });
+    logs = logs.slice(0, 100);
+    fs.writeFileSync(messagesLogFile, JSON.stringify(logs, null, 2));
+}
+
+// ====== قراءة الإعدادات ======
+const configFile = path.join(DATA_DIR, 'config.json');
+let config;
+try { config = JSON.parse(fs.readFileSync(configFile, 'utf8')); } catch (err) { console.error('❌ خطأ: لم يتم العثور على config.json'); process.exit(1); }
+
+let adminIds = config.adminIds || [];
+if (adminIds.length === 0) { console.error('❌ خطأ: adminIds غير موجود في config.json'); process.exit(1); }
+const ADMIN_ID = adminIds[0];
+
+const APP_STATE_FILE = path.join(DATA_DIR, 'appstate.json');
+const UPDATED_STATE_FILE = path.join(DATA_DIR, 'appstate_updated.json');
+const GUARD_STATE_FILE = path.join(DATA_DIR, 'guard_state.json');
+const PREFIX = '/';
+let startTime = Date.now();
+let isBotOnline = false;
+
+let isJackActive = false, jackInterval = null, silenceTimeout = null, jackText = "";
+let isNameLocked = false, lockedNameText = "", nameLockLoop = null;
+let isNickLocked = false, lockedNicknameText = "", nickInterval = null;
+let divelInterval = null, divelText = "";
+
+let appState;
+try {
+  const stateFile = fs.existsSync(UPDATED_STATE_FILE) ? UPDATED_STATE_FILE : APP_STATE_FILE;
+  if (!fs.existsSync(stateFile)) { console.error('❌ لا يوجد ملف جلسة. يرجى رفع الكوكيز من الموقع أولاً.'); process.exit(1); }
+  appState = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  console.log(`🔑 تم تحميل الجلسة من: ${stateFile}`);
+} catch (err) {
+  console.error(`❌ خطأ في قراءة ملف الجلسة: ${err.message}`);
+  process.exit(1);
+}
+
+const options = {
+  appState, listenEvents: true, selfListen: false, updatePresence: true, online: true, autoMarkRead: true,
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+};
+
+const guard = require('./guard');
+// 🚨 تمرير مسار ملف الحالة لـ guard
+process.env.GUARD_STATE_FILE = GUARD_STATE_FILE;
+guard.preLogin();
+
+// ====== API للموقع ======
+const apiApp = express();
+apiApp.use(express.json({ limit: '10mb' }));
+let dashboardCommand = null;
+global.apiInstance = null;
+
+apiApp.post('/send-command', (req, res) => { dashboardCommand = req.body.command; res.json({ success: true }); });
+
+apiApp.get('/status', (req, res) => {
+    try {
+        const state = fs.existsSync(GUARD_STATE_FILE) ? JSON.parse(fs.readFileSync(GUARD_STATE_FILE, 'utf8')) : {};
+        res.json({ msgToday: state.msgToday || 0, uptimeSec: Math.floor((Date.now() - startTime) / 1000), isOnline: isBotOnline });
+    } catch (e) { res.status(500).json({ error: 'Error' }); }
+});
+
+apiApp.get('/threads', (req, res) => {
+    if (!global.apiInstance) return res.status(500).json({ error: 'Bot not ready' });
+    global.apiInstance.getThreadList(50, null, ['INBOX'], (err, list) => {
+        if (err) return res.status(500).json({ error: 'Failed' });
+        const groups = list.filter(t => t.isGroup && t.name).map(t => ({ 
+            threadID: t.threadID, name: t.name, memberCount: t.participantIDs ? t.participantIDs.length : 0, image: t.imageSrc || null 
+        }));
+        res.json(groups);
+    });
+});
+
+apiApp.get('/thread-members/:id', (req, res) => {
+    if (!global.apiInstance) return res.status(500).json({ error: 'Bot not ready' });
+    global.apiInstance.getThreadInfo(req.params.id, (err, info) => {
+        if (err || !info) return res.json([]);
+        const members = info.participantIDs || [];
+        const threadAdmins = info.adminIDs ? info.adminIDs.map(a => a.id) : [];
+        global.apiInstance.getUserInfo(members, (err2, uInfo) => {
+            if (err2) return res.json([]);
+            const list = members.map(id => ({
+                id: id, name: uInfo[id] ? uInfo[id].name : 'Unknown', profilePic: uInfo[id] ? uInfo[id].thumbSrc : null, isThreadAdmin: threadAdmins.includes(id)
+            }));
+            res.json(list);
+        });
+    });
+});
+
+apiApp.get('/user-profile/:id', (req, res) => {
+    if (!global.apiInstance) return res.status(500).json({ error: 'Bot not ready' });
+    const uid = req.params.id;
+    global.apiInstance.getUserInfo([uid], (err, info) => {
+        if (err || !info[uid]) return res.status(500).json({ error: 'User not found' });
+        const user = info[uid];
+        const userData = {
+            id: user.userID, name: user.name, firstName: user.firstName || '-', lastName: user.lastName || '-',
+            isFriend: user.isFriend, isVerified: user.isVerified,
+            gender: user.gender === 1 ? 'أنثى' : (user.gender === 2 ? 'ذكر' : 'غير محدد'),
+            profilePic: user.thumbSrc, profileUrl: user.profileUrl || `https://facebook.com/${uid}`, bio: user.bio || 'لا يوجد وصف'
+        };
+        res.json(userData);
+    });
+});
+
+apiApp.get('/message-logs', (req, res) => {
+    try { if (fs.existsSync(messagesLogFile)) res.json(JSON.parse(fs.readFileSync(messagesLogFile, 'utf8'))); else res.json([]); } catch (e) { res.json([]); }
+});
+
+apiApp.get('/users-count', (req, res) => {
+    if (!global.apiInstance) return res.json({ count: 0 });
+    global.apiInstance.getThreadList(50, null, ['INBOX'], (err, list) => {
+        if (err) return res.json({ count: 0 });
+        let userIds = new Set();
+        list.forEach(t => { if (t.participantIDs) t.participantIDs.forEach(id => userIds.add(id)); });
+        res.json({ count: userIds.size });
+    });
+});
+
+apiApp.get('/admins', (req, res) => res.json(adminIds));
+apiApp.post('/sync-admins', (req, res) => { adminIds = req.body.admins; res.json({ success: true }); });
+
+apiApp.post('/update-cookies', (req, res) => {
+    try {
+        fs.writeFileSync(UPDATED_STATE_FILE, JSON.stringify(req.body.cookies, null, 2));
+        res.json({ success: true });
+        setTimeout(() => process.exit(0), 1000);
+    } catch (e) { res.status(500).json({ error: 'Failed' }); }
+});
+
+apiApp.listen(3001, () => console.log(`🔗 [API] خادم التحكم يعمل على المنفذ 3001`));
+
+console.log('[~] جاري تسجيل الدخول...');
+
+login(options, (err, api) => {
+  if (err) {
+    console.error('❌ فشل تسجيل الدخول:', err.error || err);
+    const errMsg = String(err.error || err);
+    if (errMsg.includes('ENOTFOUND') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNREFUSED')) {
+        console.log('⚠️ خطأ في الشبكة (DNS). سيتم إعادة المحاولة...');
+        setTimeout(() => process.exit(1), 5000);
+    } else {
+        guard.loginFailed(err);
+        process.exit(1);
+    }
+    return;
+  }
+
+  const BOT_ID = api.getCurrentUserID();
+  global.apiInstance = api;
+  isBotOnline = true;
+  console.log(`✅ تم تسجيل الدخول كـ: ${BOT_ID}`);
+  console.log(`👑 الأدمن المعتمد: ${ADMIN_ID}`);
+
+  guard.loginSucceeded();
+  guard(api, { userAgent: options.userAgent, appStateFile: UPDATED_STATE_FILE, adminId: ADMIN_ID, mode: config.guardMode || 'safe' });
+
+  console.log(`[~] بدء الاستماع...\n`);
+
+  const safeSend = (msg, threadID) => new Promise(resolve => {
+    logMessage(threadID, 'JACK V1 (Bot)', msg, 'sent');
+    api.sendMessage(msg, threadID, (err) => { if (err) console.error('❌ إرسال:', err.error || err); resolve(); });
+  });
+
+  setInterval(() => {
+      if (dashboardCommand) {
+          const cmd = dashboardCommand; dashboardCommand = null;
+          const event = { threadID: adminIds[0], senderID: adminIds[0], body: cmd, type: 'message' };
+          const parts = cmd.slice(PREFIX.length).trim().split(/\s+/);
+          handleCommand(event, parts.shift().toLowerCase(), parts);
+      }
+  }, 1000);
+
+  const clearJackState = () => { isJackActive = false; if (jackInterval) clearTimeout(jackInterval); if (silenceTimeout) clearTimeout(silenceTimeout); };
+  const stopNameLock = () => { isNameLocked = false; if (nameLockLoop) clearInterval(nameLockLoop); };
+
+  const startNameLockLoop = (threadID) => {
+    if (nameLockLoop) clearInterval(nameLockLoop);
+    nameLockLoop = setInterval(() => {
+      if (!isNameLocked) return;
+      api.getThreadInfo(threadID, (err, info) => {
+        if (err || !info) return;
+        if (info.threadName !== lockedNameText) api.setTitle(lockedNameText, threadID, () => {});
+      });
+    }, 3000);
+  };
+
+  const startNickLockLoop = (threadID) => {
+    if (nickInterval) clearInterval(nickInterval);
+    const loop = async () => {
+      if (!isNickLocked) return;
+      api.getThreadInfo(threadID, (err, info) => {
+        if (err || !info || !info.participantIDs) { if (isNickLocked) nickInterval = setTimeout(loop, 3000); return; }
+        for (const uid of info.participantIDs) {
+          if (!isNickLocked) break;
+          const currentNick = info.nicknames ? info.nicknames[uid] : "";
+          if (currentNick !== lockedNicknameText) {
+            try { api.changeNickname(lockedNicknameText, threadID, uid, (err) => {}); } catch (e) {}
+          }
+        }
+        const nextTime = Math.floor(Math.random() * (3500 - 2500 + 1) + 2500);
+        if (isNickLocked) nickInterval = setTimeout(loop, nextTime);
+      });
+    };
+    loop();
+  };
+
+  const handleCommand = async (event, command, args) => {
+    const threadID = event.threadID;
+    if (!adminIds.includes(event.senderID)) return;
+
+    if (command === 'info' || command === 'status') {
+      const uptimeSec = Math.floor((Date.now() - startTime) / 1000);
+      const days = Math.floor(uptimeSec / 86400), hours = Math.floor((uptimeSec % 86400) / 3600), mins = Math.floor((uptimeSec % 3600) / 60), secs = uptimeSec % 60;
+      let uptimeStr = "";
+      if (days > 0) uptimeStr += `${days}d `;
+      if (hours > 0) uptimeStr += `${hours}h `;
+      uptimeStr += `${mins}m ${secs}s`;
+      const pingMs = Math.floor(Math.random() * (500 - 200 + 1) + 200);
+      const statusText = `╔════ JACK V1 — Status ════╗\n║ 🤖 Bot ID: ${BOT_ID}\n║ ⏱ Uptime: ${uptimeStr}\n║ 🏓 Ping: ${pingMs}ms\n║ 📦 Commands: 7\n║ 🛡 Protection: 23 طبقة نشطة\n║ 🔑 Prefix: /\n║ 👑 By: Alu Card\n╚══════════════════════════╝`;
+      return safeSend(statusText, threadID);
+    }
+
+    if (command === 'help') {
+      return safeSend(`╭───────────────────╮\n      🤖 𝗝𝗔𝗖𝗞 𝗩𝟭 𝗕𝗢𝗧 🤖      \n╰───────────────────╯\n\n『 ⚙️ الإدارة 』\n  ▸ /nm [الاسم] : قفل اسم المجموعة.\n  ▸ /nick [الاسم] : قفل كنيات الأعضاء.\n  ▸ /divel [النص] : رسائل دورية للمجموعة.\n\n『 🛡️ الحماية 』\n  ▸ /jack [النص] : إرسال تلقائي مستمر.\n\n『 🛑 قاعدة الإيقاف 』\n  ▸ لإيقاف أي أمر، أضف كلمة off.\n  ▸ مثال: /nick off أو /jack off\n\n『 ℹ️ معلومات 』\n  ▸ /ping : اختبار سرعة البوت.\n  ▸ /info : عرض حالة البوت.\n  ▸ /uptime : مدة تشغيل البوت.`, threadID);
+    }
+
+    if (command === 'ping') {
+      const startPing = Date.now();
+      api.getThreadInfo(threadID, (err, info) => {
+        if (err) return safeSend('⚠️ فشل قياس السرعة.', threadID);
+        safeSend(`⚡ السرعة: ${Date.now() - startPing} ms`, threadID);
+      });
+      return;
+    }
+
+    if (command === 'uptime') {
+      let up = Math.floor((Date.now() - startTime) / 1000);
+      return safeSend(`⏱️ البوت يعمل منذ: ${Math.floor(up/3600)}h ${Math.floor((up%3600)/60)}m ${up%60}s`, threadID);
+    }
+
+    if (command === 'nm' || command === 'lockname') {
+      const fullArgs = args.join(' ').trim();
+      if (!fullArgs) return safeSend('⚠️ الاستخدام: /nm (الاسم) أو /nm off', threadID);
+      if (fullArgs.toLowerCase() === 'off') {
+        if (isNameLocked) { stopNameLock(); await safeSend('🔓 تم إلغاء قفل الاسم.', threadID); }
+        else await safeSend('⚠️ قفل الاسم غير مفعل أصلاً.', threadID);
+        return;
+      }
+      if (isNameLocked) return safeSend('⚠️ قفل الاسم مفعل بالفعل!', threadID);
+      const match = fullArgs.match(/\((.*?)\)/);
+      const newName = match && match[1] ? match[1].trim() : fullArgs;
+      if (!newName) return safeSend('⚠️ ضع الاسم بين قوسين.', threadID);
+      isNameLocked = true; lockedNameText = newName;
+      api.setTitle(lockedNameText, threadID, (err) => {
+        if (err) { isNameLocked = false; return safeSend('❌ فشل تغيير الاسم (تأكد أن البوت أدمن).', threadID); }
+      });
+      await safeSend(`🔒 تم تفعيل قفل الاسم\n📝 "${lockedNameText}"`, threadID);
+      startNameLockLoop(threadID);
+      return;
+    }
+
+    if (command === 'nick' || command === 'كنيات') {
+      const fullArgs = args.join(' ').trim();
+      if (!fullArgs) return safeSend('⚠️ الاستخدام: /nick (الكنية) أو /nick off', threadID);
+      if (fullArgs.toLowerCase() === 'off') {
+        if (isNickLocked) {
+          isNickLocked = false;
+          if (nickInterval) { clearTimeout(nickInterval); nickInterval = null; }
+          await safeSend('🛑 تم إيقاف قفل الكنيات.', threadID);
+        } else { await safeSend('⚠️ قفل الكنيات غير مفعل أصلاً.', threadID); }
+        return;
+      }
+      if (isNickLocked) return safeSend('⚠️ قفل الكنيات مفعل بالفعل! اكتب /nick off لإيقافه.', threadID);
+      const match = fullArgs.match(/\((.*?)\)/);
+      lockedNicknameText = match && match[1] ? match[1].trim() : fullArgs;
+      if (!lockedNicknameText) return safeSend('⚠️ اكتب الكنية المطلوبة.', threadID);
+      isNickLocked = true;
+      await safeSend(`🔒 تم تفعيل قفل الكنيات\n📝 الاسم: "${lockedNicknameText}"\n⏱ التغيير تدريجي عبر طابور حماية\n👁 مراقبة مستمرة لأي تغيير\n🛑 لإيقافها: /nick off`, threadID);
+      startNickLockLoop(threadID);
+      return;
+    }
+
+    if (command === 'divel' || command === 'dv') {
+      const fullArgs = args.join(' ').trim();
+      if (!fullArgs) return safeSend('⚠️ الاستخدام: /divel (النص) أو /divel off', threadID);
+      if (fullArgs.toLowerCase() === 'off') {
+        if (divelInterval) { clearTimeout(divelInterval); divelInterval = null; }
+        await safeSend('⏹️ تم إيقاف الرسائل الدورية.', threadID);
+        return;
+      }
+      if (divelInterval) return safeSend('⚠️ مفعلة بالفعل! اكتب /divel off لإيقافها.', threadID);
+      const match = fullArgs.match(/\((.*?)\)/);
+      divelText = match && match[1] ? match[1].trim() : fullArgs;
+      if (!divelText) return safeSend('⚠️ ضع النص بين قوسين.', threadID);
+      const sendDivel = () => {
+        safeSend(divelText, threadID);
+        const nextTime = Math.floor(Math.random() * (300 - 120 + 1) + 120) * 1000;
+        divelInterval = setTimeout(sendDivel, nextTime);
+      };
+      sendDivel();
+      return safeSend(`🔄 تم تفعيل الرسائل الدورية: "${divelText}"`, threadID);
+    }
+
+    if (command === 'jack') {
+      const fullArgs = args.join(' ').trim();
+      if (!fullArgs) return safeSend('⚠️ الاستخدام: /jack (الرسالة) أو /jack off', threadID);
+      if (fullArgs.toLowerCase() === 'off') {
+        if (isJackActive || silenceTimeout) {
+          clearJackState();
+          await safeSend('⛔ تم إيقاف الإرسال التلقائي (jack).', threadID);
+        } else { await safeSend('⚠️ الإرسال التلقائي غير نشط.', threadID); }
+        return;
+      }
+      if (isJackActive || silenceTimeout) return safeSend('⚠️ يعمل بالفعل! اكتب /jack off لإيقافه.', threadID);
+      const match = fullArgs.match(/\((.*?)\)/);
+      jackText = match && match[1] ? match[1].trim() : fullArgs;
+      if (!jackText) return safeSend('⚠️ اكتب الرسالة المطلوبة.', threadID);
+      isJackActive = true;
+      let messagesSent = 0;
+      const delaySec = 60, silenceWait = 16 * 60;
+      await safeSend(`✅ تم تفعيل ${config.botName}\n📝 "${jackText}"\n⏱ كل ${delaySec} ثانية تقريباً\n🧠 يتوقف بعد 3 رسائل بدون رد\n⚠️ بعد التوقف ينتظر ${silenceWait / 60} دقيقة من الصمت ثم يرسل 😂 ويغادر`, threadID);
+      const sendLoop = async () => {
+        if (!isJackActive) return;
+        await safeSend(jackText, threadID);
+        messagesSent++;
+        if (messagesSent >= 3) {
+          clearJackState();
+          await safeSend(`🧠 تم إرسال 3 رسائل بدون رد. صامت الآن...`, threadID);
+          silenceTimeout = setTimeout(async () => {
+            await safeSend("😂", threadID);
+            api.removeUserFromGroup(BOT_ID, threadID, (err) => { if (err) console.error('❌ فشل المغادرة:', err); });
+            silenceTimeout = null;
+          }, silenceWait * 1000);
+          return;
+        }
+        const jitter = Math.floor(delaySec * 1000 * (0.8 + Math.random() * 0.4));
+        if (isJackActive) jackInterval = setTimeout(sendLoop, jitter);
+      };
+      sendLoop();
+      return;
+    }
+  };
+
+  api.listenMqtt(async (err, event) => {
+    if (err || !event) return;
+    if (event.type === 'message' && event.senderID !== BOT_ID && event.senderID !== ADMIN_ID) {
+      if (isJackActive) { console.log('💬 رد! إيقاف الإرسال التلقائي.'); clearJackState(); }
+    }
+    if (event.type !== 'message' || !event.body || !event.body.startsWith(PREFIX)) return;
+    if (!adminIds.includes(event.senderID)) return;
+    const parts = event.body.slice(PREFIX.length).trim().split(/\s+/);
+    const command = parts.shift().toLowerCase();
+    const args = parts;
+    console.log(`[CMD] /${command} | Args: ${JSON.stringify(args)}`);
+    try { await handleCommand(event, command, args); } catch (e) { console.error('❌ خطأ في التنفيذ:', e); }
+  });
+});
+
+process.on('exit', () => { isBotOnline = false; });
+process.on('SIGINT', () => { isBotOnline = false; process.exit(0); });
