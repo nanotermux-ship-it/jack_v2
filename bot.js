@@ -42,7 +42,7 @@ const GUARD_STATE_FILE = path.join(DATA_DIR, 'guard_state.json');
 const PREFIX = '/';
 let startTime = Date.now();
 let isBotOnline = false;
-let mqttReady = false; 
+let mqttReady = false;
 
 let isJackActive = false, jackInterval = null, silenceTimeout = null, jackText = "", jackThreadID = null;
 let isNameLocked = false, lockedNameText = "", nameLockLoop = null, nameLockThreadID = null;
@@ -79,9 +79,9 @@ apiApp.post('/send-command', (req, res) => { dashboardCommand = req.body.command
 apiApp.get('/status', (req, res) => {
     try {
         const state = fs.existsSync(GUARD_STATE_FILE) ? JSON.parse(fs.readFileSync(GUARD_STATE_FILE, 'utf8')) : {};
-        res.json({ 
-            msgToday: state.msgToday || 0, 
-            uptimeSec: Math.floor((Date.now() - startTime) / 1000), 
+        res.json({
+            msgToday: state.msgToday || 0,
+            uptimeSec: Math.floor((Date.now() - startTime) / 1000),
             isOnline: isBotOnline,
             mqttReady: mqttReady
         });
@@ -178,7 +178,7 @@ login(options, (err, api) => {
   global.apiInstance = api;
   isBotOnline = true;
   mqttReady = true;
-  
+
   console.log(`✅ تم تسجيل الدخول كـ: ${BOT_ID}`);
   console.log(`👑 الأدمن المعتمد: ${ADMIN_ID}`);
   console.log(`✅ [BOT] البوت جاهز تماماً (MQTT Ready).`);
@@ -400,7 +400,7 @@ login(options, (err, api) => {
                 api.setTitle(lockedNameText, event.threadID, () => {});
             }
         }
-        
+
         // تغيير كنية عضو
         if (event.logMessageType === 'log:user-nickname' && isNickLocked && event.threadID === nickLockThreadID) {
             const targetUser = event.logMessageData?.participant_id || event.author;
