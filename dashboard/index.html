@@ -1,47 +1,38 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta charset="UTF-8">                                                      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JACK V1 - Control Center</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>                         <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Cairo', sans-serif; background-color: #0b1120; color: #fff; overflow-x: hidden; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.05); }
-        .page { display: none; height: calc(100vh - 140px); overflow-y: auto; padding-bottom: 20px; }
-        .page.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.05); }                                    .page { display: none; height: calc(100vh - 140px); overflow-y: auto; padding-bottom: 20px; }                                                           .page.active { display: block; animation: fadeIn 0.3s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .nav-item.active { color: #38bdf8; }
         .nav-item.active svg { stroke: #38bdf8; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        .admin-only { display: none; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }                                                                                  .admin-only { display: none; }
     </style>
 </head>
 <body class="h-screen flex flex-col">
 
     <div id="loading-bar" class="fixed top-0 left-0 w-full h-1 bg-slate-800 z-[200] hidden">
-        <div id="loading-progress" class="h-full bg-sky-500 w-0 transition-all duration-300"></div>
-    </div>
+        <div id="loading-progress" class="h-full bg-sky-500 w-0 transition-all duration-300"></div>                                                         </div>
 
     <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none"></div>
 
-    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1120] p-4">
-        <div class="glass p-8 rounded-3xl w-full max-w-sm text-center relative overflow-hidden shadow-2xl">
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1120] p-4">                                                        <div class="glass p-8 rounded-3xl w-full max-w-sm text-center relative overflow-hidden shadow-2xl">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-400 to-indigo-500"></div>
             <div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-blue-600 rounded-full mx-auto mb-6 flex items-center justify-center text-4xl shadow-[0_0_30px_rgba(56,189,248,0.4)]">🔒</div>
             <h1 class="text-2xl font-black mb-2">JACK V1</h1>
             <p class="text-gray-400 text-sm mb-6">لوحة التحكم المركزية</p>
-            <input type="password" id="password-input" class="w-full p-4 rounded-xl bg-slate-800 border border-slate-600 text-center mb-4 focus:outline-none focus:border-sky-400 transition-all font-mono" placeholder="••••••••">
-            <button onclick="login()" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-sky-500/30">دخول النظام</button>
+            <input type="password" id="password-input" class="w-full p-4 rounded-xl bg-slate-800 border border-slate-600 text-center mb-4 focus:outline-none focus:border-sky-400 transition-all font-mono" placeholder="••••••••">             <button onclick="login()" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-sky-500/30">دخول النظام</button>
             <p id="login-error" class="text-red-400 mt-4 hidden text-sm font-bold">كلمة السر غير صحيحة!</p>
         </div>
     </div>
 
-    <div id="app-screen" class="hidden flex-1 flex flex-col h-full">
-        <header class="px-6 py-4 flex justify-between items-center bg-[#0b1120]/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-800/50">
+    <div id="app-screen" class="hidden flex-1 flex flex-col h-full">                <header class="px-6 py-4 flex justify-between items-center bg-[#0b1120]/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-800/50">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-gradient-to-tr from-sky-400 to-indigo-600 rounded-xl flex items-center justify-center text-xl font-bold shadow-lg">J</div>
                 <div>
@@ -56,17 +47,15 @@
             </button>
         </header>
 
-        <main class="flex-1 overflow-y-auto px-4 pb-24">
-            <div id="page-home" class="page active">
+        <main class="flex-1 overflow-y-auto px-4 pb-24">                                <div id="page-home" class="page active">
                 <div class="grid grid-cols-2 gap-3 mb-4 mt-2">
                     <div class="glass p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border-b-2 border-b-purple-500/50">
                         <div class="text-2xl mb-1">👥</div>
                         <div class="text-2xl font-black text-purple-400 font-mono" id="stat-groups">0</div>
-                        <div class="text-[10px] text-gray-400 mt-1">مجموعة</div>
-                    </div>
+                        <div class="text-[10px] text-gray-400 mt-1">مجموعة</div>                                                                                            </div>
                     <div class="glass p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border-b-2 border-b-sky-500/50">
                         <div class="text-2xl mb-1">⚡</div>
-                        <div class="text-2xl font-black text-sky-400 font-mono">7</div>
+                        <div class="text-2xl font-black text-sky-400 font-mono">6</div>
                         <div class="text-[10px] text-gray-400 mt-1">أوامر</div>
                     </div>
                     <div class="glass p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border-b-2 border-b-yellow-500/50">
@@ -92,8 +81,7 @@
                     </div>
                 </div>
 
-                <div class="glass p-4 rounded-2xl mb-4 admin-only border border-slate-700">
-                    <h3 class="font-bold text-sm mb-3 text-gray-200">التحكم في البوت</h3>
+                <div class="glass p-4 rounded-2xl mb-4 admin-only border border-slate-700">                                                                                 <h3 class="font-bold text-sm mb-3 text-gray-200">التحكم في البوت</h3>
                     <div class="grid grid-cols-2 gap-3">
                         <button onclick="controlBot('start')" class="bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/30 p-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -103,36 +91,27 @@
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
                             إيقاف
                         </button>
-                    </div>
-                </div>
+                    </div>                                                                  </div>
 
-                <div class="glass rounded-2xl flex flex-col h-72 admin-only border border-slate-700 overflow-hidden">
-                    <div class="flex justify-between items-center p-3 border-b border-slate-700/50 bg-slate-800/30">
+                <div class="glass rounded-2xl flex flex-col h-72 admin-only border border-slate-700 overflow-hidden">                                                       <div class="flex justify-between items-center p-3 border-b border-slate-700/50 bg-slate-800/30">
                         <h3 class="font-bold text-xs text-gray-300">آخر الرسائل</h3>
                         <span class="flex h-2 w-2 relative"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
                     </div>
                     <div id="messages-box" class="p-3 flex-1 overflow-y-auto text-[11px] space-y-2" dir="rtl"></div>
                 </div>
             </div>
-
-            <div id="page-groups" class="page">
-                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>👥</span> المجموعات</h2>
+                                                                                        <div id="page-groups" class="page">                                             <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>👥</span> المجموعات</h2>
                 <div id="groups-list" class="space-y-3"></div>
             </div>
 
             <div id="page-group-members" class="page">
-                <button onclick="goBack()" class="mb-4 text-sky-400 text-sm flex items-center gap-1 bg-sky-500/10 px-3 py-1 rounded-lg w-fit">← رجوع</button>
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><span>👤</span> أعضاء المجموعة</h2>
+                <button onclick="goBack()" class="mb-4 text-sky-400 text-sm flex items-center gap-1 bg-sky-500/10 px-3 py-1 rounded-lg w-fit">← رجوع</button>                                                                                       <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><span>👤</span> أعضاء المجموعة</h2>
                 <div id="members-list" class="space-y-3"></div>
             </div>
 
             <div id="page-user-profile" class="page">
-                <button onclick="goBack()" class="mb-4 text-sky-400 text-sm flex items-center gap-1 bg-sky-500/10 px-3 py-1 rounded-lg w-fit">← رجوع</button>
-                <div id="user-profile-content" class="space-y-4"></div>
-            </div>
-
-            <div id="page-message-logs" class="page">
-                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>📜</span> سجل الرسائل</h2>
+                <button onclick="goBack()" class="mb-4 text-sky-400 text-sm flex items-center gap-1 bg-sky-500/10 px-3 py-1 rounded-lg w-fit">← رجوع</button>                                                                                       <div id="user-profile-content" class="space-y-4"></div>                 </div>                                                                                                                                                  <div id="page-message-logs" class="page">
+                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>📜</span> سجل الرسائل الكامل</h2>
                 <div id="message-logs-list" class="space-y-3"></div>
             </div>
 
@@ -145,32 +124,25 @@
                     <div class="glass p-4 rounded-xl border-r-4 border-r-sky-500"><h4 class="font-bold text-sm text-sky-400 font-mono">/uptime</h4><p class="text-xs text-gray-400 mt-1">عرض مدة التشغيل.</p></div>
                     <div class="glass p-4 rounded-xl border-r-4 border-r-purple-500"><h4 class="font-bold text-sm text-purple-400 font-mono">/nm [الاسم]</h4><p class="text-xs text-gray-400 mt-1">قفل اسم المجموعة.</p></div>
                     <div class="glass p-4 rounded-xl border-r-4 border-r-purple-500"><h4 class="font-bold text-sm text-purple-400 font-mono">/nick [الكنية]</h4><p class="text-xs text-gray-400 mt-1">قفل كنيات الأعضاء.</p></div>
-                    <div class="glass p-4 rounded-xl border-r-4 border-r-purple-500"><h4 class="font-bold text-sm text-purple-400 font-mono">/divel [النص]</h4><p class="text-xs text-gray-400 mt-1">إرسال رسائل دورية.</p></div>
-                    <div class="glass p-4 rounded-xl border-r-4 border-r-red-500"><h4 class="font-bold text-sm text-red-400 font-mono">/jack [النص]</h4><p class="text-xs text-gray-400 mt-1">إرسال رسائل تلقائية.</p></div>
+                    <div class="glass p-4 rounded-xl border-r-4 border-r-red-500"><h4 class="font-bold text-sm text-red-400 font-mono">/jack [النص]</h4><p class="text-xs text-gray-400 mt-1">إرسال رسائل تلقائية كل ~90 ثانية حتى 16 دقيقة صمت.</p></div>
                 </div>
             </div>
 
-            <div id="page-admins" class="page">
-                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>👑</span> إدارة الأدمنز</h2>
+            <div id="page-admins" class="page">                                             <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>👑</span> إدارة الأدمنز</h2>
                 <div class="glass p-5 rounded-2xl mb-4 admin-only" id="add-admin-section">
                     <input type="text" id="new-admin-id" class="w-full p-3 rounded-xl bg-slate-800 text-sm mb-3 border border-slate-600 focus:border-sky-400 font-mono" placeholder="أضف UID للأدمن...">
                     <button onclick="addAdmin()" class="w-full bg-sky-500 hover:bg-sky-400 py-2 rounded-xl font-bold">إضافة الأدمن</button>
                 </div>
-                <div class="space-y-2" id="admins-list"></div>
-            </div>
+                <div class="space-y-2" id="admins-list"></div>                          </div>
 
             <div id="page-security" class="page">
-                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>🛡️</span> الحماية (23)</h2>
-                <div class="space-y-3" id="security-list"></div>
+                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>🛡️</span> الحماية (23)</h2>                                                        <div class="space-y-3" id="security-list"></div>
             </div>
 
             <div id="page-tokens" class="page">
-                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>🍪</span> رفع الكوكيز</h2>
-                <div class="glass p-6 rounded-2xl admin-only" id="cookies-section">
-                    <div class="bg-sky-500/10 border border-sky-500/30 p-4 rounded-xl mb-4">
-                        <p class="text-sm text-sky-300 font-bold mb-2">⚠️ الصيغة المدعومة (JSON Array):</p>
-                        <code class="block bg-black/40 p-2 rounded text-xs text-gray-300 dir-ltr overflow-x-auto whitespace-pre font-mono">
-[
+                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>🍪</span> رفع الكوكيز</h2>                                                        <div class="glass p-6 rounded-2xl admin-only" id="cookies-section">
+                    <div class="bg-sky-500/10 border border-sky-500/30 p-4 rounded-xl mb-4">                                                                                    <p class="text-sm text-sky-300 font-bold mb-2">⚠️ الصيغة المدعومة (JSON Array):</p>
+                        <code class="block bg-black/40 p-2 rounded text-xs text-gray-300 dir-ltr overflow-x-auto whitespace-pre font-mono">             [
   {"key":"c_user","value":"...","domain":".facebook.com","path":"/"},
   {"key":"xs","value":"...","domain":".facebook.com","path":"/"}
 ]
@@ -183,8 +155,28 @@
                     <p class="text-center text-red-400 font-bold">ليس لديك صلاحية للوصول إلى هذه الصفحة.</p>
                 </div>
             </div>
-        </main>
 
+            <!-- ✅ صفحة جديدة: الإعدادات -->
+            <div id="page-settings" class="page">
+                <h2 class="text-xl font-bold mb-4 mt-2 flex items-center gap-2"><span>🔐</span> تغيير كلمة السر</h2>
+                <div class="glass p-6 rounded-2xl admin-only">
+                    <div class="space-y-4">                                                         <div>
+                            <label class="text-xs text-gray-400 mb-2 block">كلمة السر الحالية</label>
+                            <input type="password" id="current-password" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 focus:border-sky-400 font-mono" placeholder="••••••••">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 mb-2 block">كلمة السر الجديدة</label>
+                            <input type="password" id="new-password" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 focus:border-sky-400 font-mono" placeholder="••••••••">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 mb-2 block">تأكيد كلمة السر الجديدة</label>
+                            <input type="password" id="confirm-password" class="w-full p-3 rounded-xl bg-slate-800 border border-slate-600 focus:border-sky-400 font-mono" placeholder="••••••••">
+                        </div>
+                        <button onclick="changePassword()" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3 rounded-xl">حفظ كلمة السر الجديدة</button>
+                    </div>
+                </div>
+            </div>
+        </main>                                                             
         <nav class="fixed bottom-0 left-0 w-full bg-[#0b1120]/90 backdrop-blur-lg border-t border-slate-800 flex justify-around items-center py-2 px-1 z-40 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] overflow-x-auto">
             <button onclick="switchPage('home')" class="nav-item active flex flex-col items-center gap-1 min-w-[50px] text-gray-400 hover:text-sky-300 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg><span class="text-[9px] font-bold">الرئيسية</span></button>
             <button onclick="switchPage('groups')" class="nav-item flex flex-col items-center gap-1 min-w-[50px] text-gray-400 hover:text-sky-300 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg><span class="text-[9px] font-bold">المجموعات</span></button>
@@ -193,8 +185,6 @@
             <button onclick="switchPage('admins')" class="nav-item flex flex-col items-center gap-1 min-w-[50px] text-gray-400 hover:text-sky-300 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg><span class="text-[9px] font-bold">الأدمنز</span></button>
             <button onclick="switchPage('security')" class="nav-item flex flex-col items-center gap-1 min-w-[50px] text-gray-400 hover:text-sky-300 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg><span class="text-[9px] font-bold">الحماية</span></button>
             <button onclick="switchPage('tokens')" class="nav-item flex flex-col items-center gap-1 min-w-[50px] text-gray-400 hover:text-sky-300 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg><span class="text-[9px] font-bold">الكوكيز</span></button>
-        </nav>
-    </div>
-    <script src="logic.js"></script>
-</body>
+            <button onclick="switchPage('settings')" class="nav-item flex flex-col items-center gap-1 min-w-[50px] text-gray-400 hover:text-sky-300 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg><span class="text-[9px] font-bold">الإعدادات</span></button>                                                  </nav>
+    </div>                                                                      <script src="logic.js"></script>                                        </body>
 </html>
