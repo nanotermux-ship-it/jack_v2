@@ -40,10 +40,11 @@ const PREFIX = '/';
 let startTime = Date.now();
 let isBotOnline = false;
 
-let isJackActive = false, jackInterval = null, silenceTimeout = null, jackText = "";
+// ✅ حذف divelInterval و divelText
+let isJackActive = false, jackInterval = null, silenceTimeout = null;
+let jackText = "", jackThreadID = null, jackMessageCount = 0;
 let isNameLocked = false, lockedNameText = "", nameLockLoop = null;
 let isNickLocked = false, lockedNicknameText = "", nickInterval = null;
-let divelInterval = null, divelText = "";
 
 let appState;
 try {
@@ -62,7 +63,6 @@ const options = {
 };
 
 const guard = require('./guard');
-// 🚨 تمرير مسار ملف الحالة لـ guard
 process.env.GUARD_STATE_FILE = GUARD_STATE_FILE;
 guard.preLogin();
 
@@ -85,8 +85,8 @@ apiApp.get('/threads', (req, res) => {
     if (!global.apiInstance) return res.status(500).json({ error: 'Bot not ready' });
     global.apiInstance.getThreadList(50, null, ['INBOX'], (err, list) => {
         if (err) return res.status(500).json({ error: 'Failed' });
-        const groups = list.filter(t => t.isGroup && t.name).map(t => ({ 
-            threadID: t.threadID, name: t.name, memberCount: t.participantIDs ? t.participantIDs.length : 0, image: t.imageSrc || null 
+        const groups = list.filter(t => t.isGroup && t.name).map(t => ({
+            threadID: t.threadID, name: t.name, memberCount: t.participantIDs ? t.participantIDs.length : 0, image: t.imageSrc || null
         }));
         res.json(groups);
     });
@@ -183,6 +183,50 @@ login(options, (err, api) => {
     api.sendMessage(msg, threadID, (err) => { if (err) console.error('❌ إرسال:', err.error || err); resolve(); });
   });
 
+  // ====== ✅ /jack الجديد: 90s + 16min صمت + بلا حد ======
+  const JACK_SILENCE_MS = 16 * 60 * 1000; // 16 دقيقة
+
+  const stopJack = (reason = '') => {
+    isJackActive = false;
+    if (jackInterval) { clearTimeout(jackInterval); jackInterval = null; }
+    if (silenceTimeout) { clearTimeout(silenceTimeout); silenceTimeout = null; }
+    jackMessageCount = 0;
+    jackThreadID = null;
+    if (reason) console.log(`[JACK] توقف: ${reason}`);
+  };
+
+  const resetSilenceTimer = () => {
+    if (!isJackActive) return;
+    if (silenceTimeout) clearTimeout(silenceTimeout);
+    const tid = jackThreadID;
+    silenceTimeout = setTimeout(async () => {
+      if (!isJackActive) return;
+      console.log('[JACK] 16 دقيقة صمت → 😂 + توقف');
+      await safeSend("😂", tid);
+      await safeSend("⏹️ توقف /jack — سكت الجميع 16 دقيقة.", tid);
+      stopJack('16min silence');
+    }, JACK_SILENCE_MS);
+  };
+
+  const startJackLoop = (threadID, text) => {
+    isJackActive = true;
+    jackThreadID = threadID;
+    jackText = text;
+    jackMessageCount = 0;
+
+    const sendLoop = async () => {
+      if (!isJackActive) return;
+      await safeSend(jackText, threadID);
+      jackMessageCount++;
+      // ✅ 90 ثانية ±20% = 72-108 ثانية
+      const jitter = Math.floor(90000 * (0.8 + Math.random() * 0.4));
+      if (isJackActive) jackInterval = setTimeout(sendLoop, jitter);
+    };
+
+    sendLoop();
+    resetSilenceTimer();
+  };
+
   setInterval(() => {
       if (dashboardCommand) {
           const cmd = dashboardCommand; dashboardCommand = null;
@@ -192,7 +236,6 @@ login(options, (err, api) => {
       }
   }, 1000);
 
-  const clearJackState = () => { isJackActive = false; if (jackInterval) clearTimeout(jackInterval); if (silenceTimeout) clearTimeout(silenceTimeout); };
   const stopNameLock = () => { isNameLocked = false; if (nameLockLoop) clearInterval(nameLockLoop); };
 
   const startNameLockLoop = (threadID) => {
@@ -238,12 +281,13 @@ login(options, (err, api) => {
       if (hours > 0) uptimeStr += `${hours}h `;
       uptimeStr += `${mins}m ${secs}s`;
       const pingMs = Math.floor(Math.random() * (500 - 200 + 1) + 200);
-      const statusText = `╔════ JACK V1 — Status ════╗\n║ 🤖 Bot ID: ${BOT_ID}\n║ ⏱ Uptime: ${uptimeStr}\n║ 🏓 Ping: ${pingMs}ms\n║ 📦 Commands: 7\n║ 🛡 Protection: 23 طبقة نشطة\n║ 🔑 Prefix: /\n║ 👑 By: Alu Card\n╚══════════════════════════╝`;
+      const statusText = `╔════ JACK V1 — Status ════╗\n║ 🤖 Bot ID: ${BOT_ID}\n║ ⏱ Uptime: ${uptimeStr}\n║ 🏓 Ping: ${pingMs}ms\n║ 📦 Commands: 6\n║ 🛡 Protection: 23 طبقة نشطة\n║ 🔑 Prefix: /\n║ 👑 By: Alu Card\n╚══════════════════════════╝`;
       return safeSend(statusText, threadID);
     }
 
+    // ✅ /divel محذوف من /help
     if (command === 'help') {
-      return safeSend(`╭───────────────────╮\n      🤖 𝗝𝗔𝗖𝗞 𝗩𝟭 𝗕𝗢𝗧 🤖      \n╰───────────────────╯\n\n『 ⚙️ الإدارة 』\n  ▸ /nm [الاسم] : قفل اسم المجموعة.\n  ▸ /nick [الاسم] : قفل كنيات الأعضاء.\n  ▸ /divel [النص] : رسائل دورية للمجموعة.\n\n『 🛡️ الحماية 』\n  ▸ /jack [النص] : إرسال تلقائي مستمر.\n\n『 🛑 قاعدة الإيقاف 』\n  ▸ لإيقاف أي أمر، أضف كلمة off.\n  ▸ مثال: /nick off أو /jack off\n\n『 ℹ️ معلومات 』\n  ▸ /ping : اختبار سرعة البوت.\n  ▸ /info : عرض حالة البوت.\n  ▸ /uptime : مدة تشغيل البوت.`, threadID);
+      return safeSend(`╭───────────────────╮\n      🤖 𝗝𝗔𝗖𝗞 𝗩𝟭 𝗕𝗢𝗧 🤖      \n╰───────────────────╯\n\n『 ⚙️ الإدارة 』\n  ▸ /nm [الاسم] : قفل اسم المجموعة.\n  ▸ /nick [الاسم] : قفل كنيات الأعضاء.\n\n『 🛡️ الحماية 』\n  ▸ /jack [النص] : إرسال تلقائي كل ~90s حتى يسكت الجميع 16 دقيقة → 😂\n\n『 🛑 قاعدة الإيقاف 』\n  ▸ لإيقاف أي أمر، أضف كلمة off.\n  ▸ مثال: /nick off أو /jack off\n\n『 ℹ️ معلومات 』\n  ▸ /ping : اختبار سرعة البوت.\n  ▸ /info : عرض حالة البوت.\n  ▸ /uptime : مدة تشغيل البوت.`, threadID);
     }
 
     if (command === 'ping') {
@@ -302,72 +346,59 @@ login(options, (err, api) => {
       return;
     }
 
-    if (command === 'divel' || command === 'dv') {
-      const fullArgs = args.join(' ').trim();
-      if (!fullArgs) return safeSend('⚠️ الاستخدام: /divel (النص) أو /divel off', threadID);
-      if (fullArgs.toLowerCase() === 'off') {
-        if (divelInterval) { clearTimeout(divelInterval); divelInterval = null; }
-        await safeSend('⏹️ تم إيقاف الرسائل الدورية.', threadID);
-        return;
-      }
-      if (divelInterval) return safeSend('⚠️ مفعلة بالفعل! اكتب /divel off لإيقافها.', threadID);
-      const match = fullArgs.match(/\((.*?)\)/);
-      divelText = match && match[1] ? match[1].trim() : fullArgs;
-      if (!divelText) return safeSend('⚠️ ضع النص بين قوسين.', threadID);
-      const sendDivel = () => {
-        safeSend(divelText, threadID);
-        const nextTime = Math.floor(Math.random() * (300 - 120 + 1) + 120) * 1000;
-        divelInterval = setTimeout(sendDivel, nextTime);
-      };
-      sendDivel();
-      return safeSend(`🔄 تم تفعيل الرسائل الدورية: "${divelText}"`, threadID);
-    }
+    // ❌ كتلة /divel محذوفة بالكامل
 
+    // ====== ✅ /jack الجديد ======
     if (command === 'jack') {
       const fullArgs = args.join(' ').trim();
       if (!fullArgs) return safeSend('⚠️ الاستخدام: /jack (الرسالة) أو /jack off', threadID);
+
+      // إيقاف يدوي
       if (fullArgs.toLowerCase() === 'off') {
-        if (isJackActive || silenceTimeout) {
-          clearJackState();
-          await safeSend('⛔ تم إيقاف الإرسال التلقائي (jack).', threadID);
-        } else { await safeSend('⚠️ الإرسال التلقائي غير نشط.', threadID); }
+        if (isJackActive) {
+          const tid = jackThreadID;
+          stopJack('manual off');
+          await safeSend('⛔ تم إيقاف /jack يدوياً.', tid || threadID);
+        } else {
+          await safeSend('⚠️ /jack غير نشط حالياً.', threadID);
+        }
         return;
       }
-      if (isJackActive || silenceTimeout) return safeSend('⚠️ يعمل بالفعل! اكتب /jack off لإيقافه.', threadID);
+
+      if (isJackActive) return safeSend('⚠️ /jack يعمل بالفعل في مجموعة أخرى! اكتب /jack off أولاً.', threadID);
+
+      // استخراج النص
       const match = fullArgs.match(/\((.*?)\)/);
-      jackText = match && match[1] ? match[1].trim() : fullArgs;
-      if (!jackText) return safeSend('⚠️ اكتب الرسالة المطلوبة.', threadID);
-      isJackActive = true;
-      let messagesSent = 0;
-      const delaySec = 60, silenceWait = 16 * 60;
-      await safeSend(`✅ تم تفعيل ${config.botName}\n📝 "${jackText}"\n⏱ كل ${delaySec} ثانية تقريباً\n🧠 يتوقف بعد 3 رسائل بدون رد\n⚠️ بعد التوقف ينتظر ${silenceWait / 60} دقيقة من الصمت ثم يرسل 😂 ويغادر`, threadID);
-      const sendLoop = async () => {
-        if (!isJackActive) return;
-        await safeSend(jackText, threadID);
-        messagesSent++;
-        if (messagesSent >= 3) {
-          clearJackState();
-          await safeSend(`🧠 تم إرسال 3 رسائل بدون رد. صامت الآن...`, threadID);
-          silenceTimeout = setTimeout(async () => {
-            await safeSend("😂", threadID);
-            api.removeUserFromGroup(BOT_ID, threadID, (err) => { if (err) console.error('❌ فشل المغادرة:', err); });
-            silenceTimeout = null;
-          }, silenceWait * 1000);
-          return;
-        }
-        const jitter = Math.floor(delaySec * 1000 * (0.8 + Math.random() * 0.4));
-        if (isJackActive) jackInterval = setTimeout(sendLoop, jitter);
-      };
-      sendLoop();
+      const text = match && match[1] ? match[1].trim() : fullArgs;
+      if (!text) return safeSend('⚠️ اكتب الرسالة المطلوبة.', threadID);
+
+      // إشعار البدء
+      await safeSend(
+        `✅ تم تفعيل /jack\n` +
+        `📝 النص: "${text}"\n` +
+        `⏱ إرسال تلقائي كل ~90 ثانية (±20%)\n` +
+        `👁 مراقبة مستمرة لأي تفاعل\n` +
+        `⏸️ يتوقف إذا سكت الجميع 16 دقيقة → 😂\n` +
+        `🛑 للإيقاف اليدوي: /jack off`,
+        threadID
+      );
+
+      startJackLoop(threadID, text);
       return;
     }
   };
 
   api.listenMqtt(async (err, event) => {
     if (err || !event) return;
+
+    // ====== ✅ مراقبة التفاعل أثناء /jack ======
     if (event.type === 'message' && event.senderID !== BOT_ID && event.senderID !== ADMIN_ID) {
-      if (isJackActive) { console.log('💬 رد! إيقاف الإرسال التلقائي.'); clearJackState(); }
+      if (isJackActive && event.threadID === jackThreadID) {
+        resetSilenceTimer();
+      }
     }
+
+    // معالجة الأوامر
     if (event.type !== 'message' || !event.body || !event.body.startsWith(PREFIX)) return;
     if (!adminIds.includes(event.senderID)) return;
     const parts = event.body.slice(PREFIX.length).trim().split(/\s+/);
